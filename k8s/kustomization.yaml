@@ -1,0 +1,16 @@
+resources:
+  - django/deployment.yaml
+  - django/service.yaml
+  - java/deployment.yaml
+  - java/service.yaml
+  - node/deployment.yaml
+  - node/service.yaml
+  - react/deployment.yaml
+  - react/service.yaml
+  - mongo/deployment.yaml
+  - mongo/service.yaml
+  - ingress/ingress.yaml
+  - configs/django-configmap.yaml
+  - configs/node-configmap.yaml
+  - secrets/mongo-secret.yaml
+  - secrets/django-secret.yaml
