@@ -1,0 +1,298 @@
+---
+
+## ✅ **What This Terraform Project Will Do**
+
+This project will provision:
+
+### 🔧 **Infrastructure Components**
+
+| Component                           | Purpose                            |
+| ----------------------------------- | ---------------------------------- |
+| **VPC**                             | Isolated network                   |
+| **Subnets (Public & Private)**      | Separate ALB and ECS/RDS           |
+| **Internet Gateway & NAT Gateway**  | Internet access for ECS            |
+| **Route Tables**                    | Correct traffic flow               |
+| **Security Groups**                 | Secure communication               |
+| **S3 Bucket**                       | Store static files/artifacts       |
+| **ECR Repository**                  | Store Docker images                |
+| **IAM Roles & Policies**            | Secure access for ECS tasks        |
+| **RDS (PostgreSQL)**                | Backend database                   |
+| **ALB (Application Load Balancer)** | Expose the service to the internet |
+| **ECS (Fargate)**                   | Run the app container              |
+| **Route 53 Record**                 | DNS for your app                   |
+| **CloudWatch Logs**                 | Centralized container logging      |
+
+---
+
+## 📁 **Terraform Folder Structure**
+
+```
+terraform-aws-project/
+├── main.tf
+├── variables.tf
+├── outputs.tf
+├── vpc.tf
+├── s3.tf
+├── ecr.tf
+├── ecs.tf
+├── alb.tf
+├── rds.tf
+├── iam.tf
+├── cloudwatch.tf
+├── route53.tf
+```
+
+---
+
+## 🧩 **Terraform Modules Breakdown (Simplified)**
+
+Here’s an overview of each file with key snippets.
+
+---
+
+### 📌 `vpc.tf`
+
+```hcl
+resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
+  enable_dns_support = true
+  enable_dns_hostnames = true
+  tags = { Name = "main-vpc" }
+}
+
+resource "aws_subnet" "public" {
+  count = 2
+  vpc_id = aws_vpc.main.id
+  cidr_block = cidrsubnet("10.0.1.0/24", 8, count.index)
+  map_public_ip_on_launch = true
+  availability_zone = data.aws_availability_zones.available.names[count.index]
+}
+
+resource "aws_internet_gateway" "igw" {
+  vpc_id = aws_vpc.main.id
+}
+```
+
+---
+
+### 📌 `ecr.tf`
+
+```hcl
+resource "aws_ecr_repository" "app" {
+  name = "myapp-repo"
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+```
+
+---
+
+### 📌 `s3.tf`
+
+```hcl
+resource "aws_s3_bucket" "artifact_store" {
+  bucket = "myapp-artifacts-${random_id.bucket.hex}"
+  versioning { enabled = true }
+}
+```
+
+---
+
+### 📌 `rds.tf`
+
+```hcl
+resource "aws_db_instance" "postgres" {
+  allocated_storage = 20
+  engine = "postgres"
+  instance_class = "db.t3.micro"
+  name = "appdb"
+  username = "admin"
+  password = var.db_password
+  publicly_accessible = false
+  vpc_security_group_ids = [aws_security_group.rds.id]
+  subnet_group_name = aws_db_subnet_group.main.name
+}
+```
+
+---
+
+### 📌 `ecs.tf`
+
+```hcl
+resource "aws_ecs_cluster" "main" {
+  name = "app-cluster"
+}
+
+resource "aws_ecs_task_definition" "app" {
+  family = "app-task"
+  network_mode = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu = "256"
+  memory = "512"
+  container_definitions = jsonencode([{
+    name = "app"
+    image = "${aws_ecr_repository.app.repository_url}:latest"
+    portMappings = [{ containerPort = 80 }]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = "/ecs/app"
+        awslogs-region        = var.region
+        awslogs-stream-prefix = "ecs"
+      }
+    }
+  }])
+  execution_role_arn = aws_iam_role.ecs_task_execution_role.arn
+}
+
+resource "aws_ecs_service" "app" {
+  name            = "app-service"
+  cluster         = aws_ecs_cluster.main.id
+  launch_type     = "FARGATE"
+  task_definition = aws_ecs_task_definition.app.arn
+  desired_count   = 2
+  network_configuration {
+    subnets         = aws_subnet.public[*].id
+    assign_public_ip = true
+    security_groups = [aws_security_group.ecs.id]
+  }
+  load_balancer {
+    target_group_arn = aws_lb_target_group.app.arn
+    container_name   = "app"
+    container_port   = 80
+  }
+}
+```
+
+---
+
+### 📌 `alb.tf`
+
+```hcl
+resource "aws_lb" "app" {
+  name               = "app-lb"
+  internal           = false
+  load_balancer_type = "application"
+  subnets            = aws_subnet.public[*].id
+  security_groups    = [aws_security_group.alb.id]
+}
+
+resource "aws_lb_target_group" "app" {
+  name     = "app-tg"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+  target_type = "ip"
+}
+
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.app.arn
+  port              = "80"
+  protocol          = "HTTP"
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
+  }
+}
+```
+
+---
+
+### 📌 `route53.tf`
+
+```hcl
+resource "aws_route53_record" "app" {
+  zone_id = var.hosted_zone_id
+  name    = "app.example.com"
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.app.dns_name
+    zone_id                = aws_lb.app.zone_id
+    evaluate_target_health = true
+  }
+}
+```
+
+---
+
+### 📌 `cloudwatch.tf`
+
+```hcl
+resource "aws_cloudwatch_log_group" "app" {
+  name              = "/ecs/app"
+  retention_in_days = 14
+}
+```
+
+---
+
+### 📌 `iam.tf`
+
+```hcl
+resource "aws_iam_role" "ecs_task_execution_role" {
+  name = "ecsTaskExecutionRole"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Action = "sts:AssumeRole",
+      Principal = { Service = "ecs-tasks.amazonaws.com" },
+      Effect = "Allow"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
+  role       = aws_iam_role.ecs_task_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+```
+
+---
+
+### 📌 `variables.tf`
+
+```hcl
+variable "region" {
+  default = "us-east-1"
+}
+
+variable "db_password" {
+  type = string
+  sensitive = true
+}
+
+variable "hosted_zone_id" {
+  type = string
+}
+```
+
+---
+
+## 🚀 **Deployment Steps**
+
+1. **Initialize Terraform**
+
+   ```bash
+   terraform init
+   ```
+
+2. **Plan the changes**
+
+   ```bash
+   terraform plan
+   ```
+
+3. **Apply the configuration**
+
+   ```bash
+   terraform apply
+   ```
+
+4. **Push your Docker image**
+
+   * Build and push from Jenkins to the created ECR repo.
+
+---
+
