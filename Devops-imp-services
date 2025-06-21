@@ -1,0 +1,255 @@
+
+
+* 📘 **Definition**
+* 💡 **Real-world Example**
+* 🧱 **Terraform Code Snippet**
+
+---
+
+## 1. 🔶 **Amazon ECS (Elastic Container Service)**
+
+### 📘 **Definition:**
+
+Amazon ECS is a fully managed container orchestration service used to run Docker containers.
+
+### 💡 **Example Use Case:**
+
+Run a Node.js app in Docker using ECS Fargate (no server management needed).
+
+### 🧱 **Terraform Code:**
+
+```hcl
+resource "aws_ecs_cluster" "app" {
+  name = "my-ecs-cluster"
+}
+```
+
+---
+
+## 2. 🐳 **Amazon ECR (Elastic Container Registry)**
+
+### 📘 **Definition:**
+
+ECR is a fully managed Docker container registry for storing and managing container images.
+
+### 💡 **Example Use Case:**
+
+Store Docker image for your microservice and deploy from it.
+
+### 🧱 **Terraform Code:**
+
+```hcl
+resource "aws_ecr_repository" "app" {
+  name = "myapp-repo"
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+```
+
+---
+
+## 3. 🪣 **Amazon S3 (Simple Storage Service)**
+
+### 📘 **Definition:**
+
+S3 is an object storage service used to store and retrieve any amount of data.
+
+### 💡 **Example Use Case:**
+
+Store user uploads, logs, or Terraform state files.
+
+### 🧱 **Terraform Code:**
+
+```hcl
+resource "aws_s3_bucket" "artifacts" {
+  bucket = "myapp-artifacts-bucket"
+  versioning {
+    enabled = true
+  }
+}
+```
+
+---
+
+## 4. 🌐 **ALB (Application Load Balancer)**
+
+### 📘 **Definition:**
+
+ALB automatically distributes incoming HTTP/HTTPS traffic across targets (like ECS tasks).
+
+### 💡 **Example Use Case:**
+
+Expose your ECS app to the internet securely.
+
+### 🧱 **Terraform Code:**
+
+```hcl
+resource "aws_lb" "app_lb" {
+  name               = "app-lb"
+  internal           = false
+  load_balancer_type = "application"
+  subnets            = aws_subnet.public[*].id
+  security_groups    = [aws_security_group.alb.id]
+}
+```
+
+---
+
+## 5. 🐘 **Amazon RDS (Relational Database Service)**
+
+### 📘 **Definition:**
+
+Managed relational database service that supports PostgreSQL, MySQL, etc.
+
+### 💡 **Example Use Case:**
+
+Use PostgreSQL for app user data in a secure, backed-up database.
+
+### 🧱 **Terraform Code:**
+
+```hcl
+resource "aws_db_instance" "postgres" {
+  identifier         = "app-db"
+  engine             = "postgres"
+  instance_class     = "db.t3.micro"
+  allocated_storage  = 20
+  username           = "admin"
+  password           = var.db_password
+  vpc_security_group_ids = [aws_security_group.rds.id]
+  skip_final_snapshot = true
+}
+```
+
+---
+
+## 6. 📊 **Amazon CloudWatch**
+
+### 📘 **Definition:**
+
+Monitoring and logging service for AWS resources and applications.
+
+### 💡 **Example Use Case:**
+
+Monitor ECS logs and trigger alarms when CPU goes above 80%.
+
+### 🧱 **Terraform Code:**
+
+```hcl
+resource "aws_cloudwatch_log_group" "ecs_logs" {
+  name              = "/ecs/myapp"
+  retention_in_days = 14
+}
+```
+
+---
+
+## 7. 🔐 **AWS IAM (Identity and Access Management)**
+
+### 📘 **Definition:**
+
+IAM manages permissions and access for AWS services and users.
+
+### 💡 **Example Use Case:**
+
+Allow ECS tasks to pull from ECR and log to CloudWatch.
+
+### 🧱 **Terraform Code:**
+
+```hcl
+resource "aws_iam_role" "ecs_task_execution" {
+  name = "ecsTaskExecutionRole"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect = "Allow",
+      Principal = {
+        Service = "ecs-tasks.amazonaws.com"
+      },
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_execution_policy" {
+  role       = aws_iam_role.ecs_task_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+```
+
+---
+
+## 8. 🌍 **Amazon Route 53**
+
+### 📘 **Definition:**
+
+Route 53 is a scalable DNS service to route traffic to AWS and external resources.
+
+### 💡 **Example Use Case:**
+
+Create `app.example.com` that points to your ALB.
+
+### 🧱 **Terraform Code:**
+
+```hcl
+resource "aws_route53_record" "app" {
+  zone_id = var.hosted_zone_id
+  name    = "app.example.com"
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.app_lb.dns_name
+    zone_id                = aws_lb.app_lb.zone_id
+    evaluate_target_health = true
+  }
+}
+```
+
+---
+
+## 9. 🕸️ **Amazon VPC (Virtual Private Cloud)**
+
+### 📘 **Definition:**
+
+A VPC is an isolated network within AWS that you control (subnets, route tables, NAT, etc.).
+
+### 💡 **Example Use Case:**
+
+Host ALB in public subnets and RDS in private subnets securely.
+
+### 🧱 **Terraform Code:**
+
+```hcl
+resource "aws_vpc" "main" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+  tags = { Name = "main-vpc" }
+}
+
+resource "aws_subnet" "public" {
+  count             = 2
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = cidrsubnet("10.0.1.0/24", 8, count.index)
+  map_public_ip_on_launch = true
+}
+```
+
+---
+
+## ✅ Summary Table
+
+| AWS Service | Purpose                | Terraform Resource                   |
+| ----------- | ---------------------- | ------------------------------------ |
+| ECS         | Run containers         | `aws_ecs_cluster`, `aws_ecs_service` |
+| ECR         | Store container images | `aws_ecr_repository`                 |
+| S3          | Store files/artifacts  | `aws_s3_bucket`                      |
+| ALB         | Load balance traffic   | `aws_lb`, `aws_lb_listener`          |
+| RDS         | Managed DB             | `aws_db_instance`                    |
+| CloudWatch  | Monitoring/logging     | `aws_cloudwatch_log_group`           |
+| IAM         | Access control         | `aws_iam_role`, `aws_iam_policy`     |
+| Route 53    | DNS for app            | `aws_route53_record`                 |
+| VPC         | Private network        | `aws_vpc`, `aws_subnet`              |
+
+---
+
