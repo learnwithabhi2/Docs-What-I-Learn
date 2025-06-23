@@ -1,4 +1,4 @@
-Here's a set of Kubernetes (k8s) manifests for each component of your full-stack project. These files are written with separate Deployments and Services, designed to work in a microservices architecture and ready for kubectl apply -f.
+Here's a set of Kubernetes (k8s) manifest for each component of your full-stack project. These files are written with separate Deployments and Services, designed to work in a microservices architecture and ready for kubectl apply -f.
 ________________________________________
 📁 File Structure:
 k8s/
